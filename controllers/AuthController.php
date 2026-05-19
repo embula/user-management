@@ -18,230 +18,157 @@ use yii\widgets\ActiveForm;
 
 class AuthController extends BaseController
 {
-	/**
-	 * @var array
-	 */
-	public $freeAccessActions = ['login', 'logout', 'confirm-registration-email'];
+	public array $freeAccessActions = ['login', 'logout', 'confirm-registration-email'];
 
-	/**
-	 * @return array
-	 */
-	public function actions()
+	public function actions(): array
 	{
 		return [
 			'captcha' => $this->module->captchaOptions,
 		];
 	}
 
-	/**
-	 * Login form
-	 *
-	 * @return string
-	 */
-	public function actionLogin()
+	public function actionLogin(): Response|string
 	{
-		if ( !Yii::$app->user->isGuest )
-		{
+		if (!Yii::$app->user->isGuest) {
 			return $this->goHome();
 		}
 
 		$model = new LoginForm();
 
-		if ( Yii::$app->request->isAjax AND $model->load(Yii::$app->request->post()) )
-		{
+		if (Yii::$app->request->isAjax && $model->load(Yii::$app->request->post())) {
 			Yii::$app->response->format = Response::FORMAT_JSON;
 			return ActiveForm::validate($model);
 		}
 
-		if ( $model->load(Yii::$app->request->post()) AND $model->login() )
-		{
+		if ($model->load(Yii::$app->request->post()) && $model->login()) {
 			return $this->goBack();
 		}
 
 		return $this->renderIsAjax('login', compact('model'));
 	}
 
-	/**
-	 * Logout and redirect to home page
-	 */
-	public function actionLogout()
+	public function actionLogout(): Response
 	{
 		Yii::$app->user->logout();
 
 		return $this->redirect(Yii::$app->homeUrl);
 	}
 
-	/**
-	 * Change your own password
-	 *
-	 * @throws \yii\web\ForbiddenHttpException
-	 * @return string|\yii\web\Response
-	 */
-	public function actionChangeOwnPassword()
+	public function actionChangeOwnPassword(): Response|string
 	{
-		if ( Yii::$app->user->isGuest )
-		{
+		if (Yii::$app->user->isGuest) {
 			return $this->goHome();
 		}
 
 		$user = User::getCurrentUser();
 
-		if ( $user->status != User::STATUS_ACTIVE )
-		{
+		if ($user->status != User::STATUS_ACTIVE) {
 			throw new ForbiddenHttpException();
 		}
 
-		$model = new ChangeOwnPasswordForm(['user'=>$user]);
+		$model = new ChangeOwnPasswordForm(['user' => $user]);
 
-
-		if ( Yii::$app->request->isAjax AND $model->load(Yii::$app->request->post()) )
-		{
+		if (Yii::$app->request->isAjax && $model->load(Yii::$app->request->post())) {
 			Yii::$app->response->format = Response::FORMAT_JSON;
 			return ActiveForm::validate($model);
 		}
 
-		if ( $model->load(Yii::$app->request->post()) AND $model->changePassword() )
-		{
+		if ($model->load(Yii::$app->request->post()) && $model->changePassword()) {
 			return $this->renderIsAjax('changeOwnPasswordSuccess');
 		}
 
 		return $this->renderIsAjax('changeOwnPassword', compact('model'));
 	}
 
-	/**
-	 * Registration logic
-	 *
-	 * @return string
-	 */
-	public function actionRegistration()
+	public function actionRegistration(): Response|string
 	{
-		if ( !Yii::$app->user->isGuest )
-		{
+		if (!Yii::$app->user->isGuest) {
 			return $this->goHome();
 		}
 
-		$model = new $this->module->registrationFormClass;
+		$registrationClass = $this->module->registrationFormClass;
+		$model = new $registrationClass();
 
-
-		if ( Yii::$app->request->isAjax AND $model->load(Yii::$app->request->post()) )
-		{
-
+		if (Yii::$app->request->isAjax && $model->load(Yii::$app->request->post())) {
 			Yii::$app->response->format = Response::FORMAT_JSON;
 
-			// Ajax validation breaks captcha. See https://github.com/yiisoft/yii2/issues/6115
-			// Thanks to TomskDiver
+			// Ajax validation breaks captcha — skip it in AJAX validate pass
 			$validateAttributes = $model->attributes;
 			unset($validateAttributes['captcha']);
 
 			return ActiveForm::validate($model, $validateAttributes);
 		}
 
-		if ( $model->load(Yii::$app->request->post()) AND $model->validate() )
-		{
-			// Trigger event "before registration" and checks if it's valid
-			if ( $this->triggerModuleEvent(UserAuthEvent::BEFORE_REGISTRATION, ['model'=>$model]) )
-			{
+		if ($model->load(Yii::$app->request->post()) && $model->validate()) {
+			if ($this->triggerModuleEvent(UserAuthEvent::BEFORE_REGISTRATION, ['model' => $model])) {
 				$user = $model->registerUser(false);
 
-				// Trigger event "after registration" and checks if it's valid
-				if ( $this->triggerModuleEvent(UserAuthEvent::AFTER_REGISTRATION, ['model'=>$model, 'user'=>$user]) )
-				{
-					if ( $user )
-					{
-						if ( Yii::$app->getModule('user-management')->useEmailAsLogin AND Yii::$app->getModule('user-management')->emailConfirmationRequired )
-						{
+				if ($this->triggerModuleEvent(UserAuthEvent::AFTER_REGISTRATION, ['model' => $model, 'user' => $user])) {
+					if ($user) {
+						$module = Yii::$app->getModule('user-management');
+						if ($module->useEmailAsLogin && $module->emailConfirmationRequired) {
 							return $this->renderIsAjax('registrationWaitForEmailConfirmation', compact('user'));
 						}
-						else
-						{
-							$roles = (array)$this->module->rolesAfterRegistration;
 
-							foreach ($roles as $role)
-							{
-								User::assignRole($user->id, $role);
-							}
-
-							Yii::$app->user->login($user);
-
-							return $this->redirect(Yii::$app->user->returnUrl);
+						foreach ((array)$this->module->rolesAfterRegistration as $role) {
+							User::assignRole($user->id, $role);
 						}
 
+						Yii::$app->user->login($user);
+
+						return $this->redirect(Yii::$app->user->returnUrl);
 					}
 				}
 			}
-
 		}
 
 		return $this->renderIsAjax('registration', compact('model'));
 	}
 
-
-	/**
-	 * Receive token after registration, find user by it and confirm email
-	 *
-	 * @param string $token
-	 *
-	 * @throws \yii\web\NotFoundHttpException
-	 * @return string|\yii\web\Response
-	 */
-	public function actionConfirmRegistrationEmail($token)
+	public function actionConfirmRegistrationEmail(string $token): Response|string
 	{
-		if ( Yii::$app->getModule('user-management')->useEmailAsLogin AND Yii::$app->getModule('user-management')->emailConfirmationRequired )
-		{
-			$model = new $this->module->registrationFormClass;
+		$module = Yii::$app->getModule('user-management');
 
-			$user = $model->checkConfirmationToken($token);
+		if ($module->useEmailAsLogin && $module->emailConfirmationRequired) {
+			$registrationClass = $this->module->registrationFormClass;
+			$model = new $registrationClass();
+			$user  = $model->checkConfirmationToken($token);
 
-			if ( $user )
-			{
+			if ($user) {
 				return $this->renderIsAjax('confirmEmailSuccess', compact('user'));
 			}
 
 			throw new NotFoundHttpException(UserManagementModule::t('front', 'Token not found. It may be expired'));
 		}
+
+		return $this->goHome();
 	}
 
-
-	/**
-	 * Form to recover password
-	 *
-	 * @return string|\yii\web\Response
-	 */
-	public function actionPasswordRecovery()
+	public function actionPasswordRecovery(): Response|string
 	{
-		if ( !Yii::$app->user->isGuest )
-		{
+		if (!Yii::$app->user->isGuest) {
 			return $this->goHome();
 		}
 
 		$model = new PasswordRecoveryForm();
 
-		if ( Yii::$app->request->isAjax AND $model->load(Yii::$app->request->post()) )
-		{
+		if (Yii::$app->request->isAjax && $model->load(Yii::$app->request->post())) {
 			Yii::$app->response->format = Response::FORMAT_JSON;
 
-			// Ajax validation breaks captcha. See https://github.com/yiisoft/yii2/issues/6115
-			// Thanks to TomskDiver
 			$validateAttributes = $model->attributes;
 			unset($validateAttributes['captcha']);
 
 			return ActiveForm::validate($model, $validateAttributes);
 		}
 
-		if ( $model->load(Yii::$app->request->post()) AND $model->validate() )
-		{
-			if ( $this->triggerModuleEvent(UserAuthEvent::BEFORE_PASSWORD_RECOVERY_REQUEST, ['model'=>$model]) )
-			{
-				if ( $model->sendEmail(false) )
-				{
-					if ( $this->triggerModuleEvent(UserAuthEvent::AFTER_PASSWORD_RECOVERY_REQUEST, ['model'=>$model]) )
-					{
+		if ($model->load(Yii::$app->request->post()) && $model->validate()) {
+			if ($this->triggerModuleEvent(UserAuthEvent::BEFORE_PASSWORD_RECOVERY_REQUEST, ['model' => $model])) {
+				if ($model->sendEmail(false)) {
+					if ($this->triggerModuleEvent(UserAuthEvent::AFTER_PASSWORD_RECOVERY_REQUEST, ['model' => $model])) {
 						return $this->renderIsAjax('passwordRecoverySuccess');
 					}
-				}
-				else
-				{
-					Yii::$app->session->setFlash('error', UserManagementModule::t('front', "Unable to send message for email provided"));
+				} else {
+					Yii::$app->session->setFlash('error', UserManagementModule::t('front', 'Unable to send message for email provided'));
 				}
 			}
 		}
@@ -249,41 +176,28 @@ class AuthController extends BaseController
 		return $this->renderIsAjax('passwordRecovery', compact('model'));
 	}
 
-	/**
-	 * Receive token, find user by it and show form to change password
-	 *
-	 * @param string $token
-	 *
-	 * @throws \yii\web\NotFoundHttpException
-	 * @return string|\yii\web\Response
-	 */
-	public function actionPasswordRecoveryReceive($token)
+	public function actionPasswordRecoveryReceive(string $token): Response|string
 	{
-		if ( !Yii::$app->user->isGuest )
-		{
+		if (!Yii::$app->user->isGuest) {
 			return $this->goHome();
 		}
 
 		$user = User::findByConfirmationToken($token);
 
-		if ( !$user )
-		{
+		if (!$user) {
 			throw new NotFoundHttpException(UserManagementModule::t('front', 'Token not found. It may be expired. Try reset password once more'));
 		}
 
 		$model = new ChangeOwnPasswordForm([
-			'scenario'=>'restoreViaEmail',
-			'user'=>$user,
+			'scenario' => 'restoreViaEmail',
+			'user'     => $user,
 		]);
 
-		if ( $model->load(Yii::$app->request->post()) AND $model->validate() )
-		{
-			if ( $this->triggerModuleEvent(UserAuthEvent::BEFORE_PASSWORD_RECOVERY_COMPLETE, ['model'=>$model]) )
-			{
+		if ($model->load(Yii::$app->request->post()) && $model->validate()) {
+			if ($this->triggerModuleEvent(UserAuthEvent::BEFORE_PASSWORD_RECOVERY_COMPLETE, ['model' => $model])) {
 				$model->changePassword(false);
 
-				if ( $this->triggerModuleEvent(UserAuthEvent::AFTER_PASSWORD_RECOVERY_COMPLETE, ['model'=>$model]) )
-				{
+				if ($this->triggerModuleEvent(UserAuthEvent::AFTER_PASSWORD_RECOVERY_COMPLETE, ['model' => $model])) {
 					return $this->renderIsAjax('changeOwnPasswordSuccess');
 				}
 			}
@@ -292,48 +206,36 @@ class AuthController extends BaseController
 		return $this->renderIsAjax('changeOwnPassword', compact('model'));
 	}
 
-	/**
-	 * @return string|\yii\web\Response
-	 */
-	public function actionConfirmEmail()
+	public function actionConfirmEmail(): Response|string
 	{
-		if ( Yii::$app->user->isGuest )
-		{
+		if (Yii::$app->user->isGuest) {
 			return $this->goHome();
 		}
 
 		$user = User::getCurrentUser();
 
-		if ( $user->email_confirmed == 1 )
-		{
+		if ($user->email_confirmed == 1) {
 			return $this->renderIsAjax('confirmEmailSuccess', compact('user'));
 		}
 
 		$model = new ConfirmEmailForm([
-			'email'=>$user->email,
-			'user'=>$user,
+			'email' => $user->email,
+			'user'  => $user,
 		]);
 
-		if ( Yii::$app->request->isAjax AND $model->load(Yii::$app->request->post()) )
-		{
+		if (Yii::$app->request->isAjax && $model->load(Yii::$app->request->post())) {
 			Yii::$app->response->format = Response::FORMAT_JSON;
 			return ActiveForm::validate($model);
 		}
 
-		if ( $model->load(Yii::$app->request->post()) AND $model->validate() )
-		{
-			if ( $this->triggerModuleEvent(UserAuthEvent::BEFORE_EMAIL_CONFIRMATION_REQUEST, ['model'=>$model]) )
-			{
-				if ( $model->sendEmail(false) )
-				{
-					if ( $this->triggerModuleEvent(UserAuthEvent::AFTER_EMAIL_CONFIRMATION_REQUEST, ['model'=>$model]) )
-					{
+		if ($model->load(Yii::$app->request->post()) && $model->validate()) {
+			if ($this->triggerModuleEvent(UserAuthEvent::BEFORE_EMAIL_CONFIRMATION_REQUEST, ['model' => $model])) {
+				if ($model->sendEmail(false)) {
+					if ($this->triggerModuleEvent(UserAuthEvent::AFTER_EMAIL_CONFIRMATION_REQUEST, ['model' => $model])) {
 						return $this->refresh();
 					}
-				}
-				else
-				{
-					Yii::$app->session->setFlash('error', UserManagementModule::t('front', "Unable to send message for email provided"));
+				} else {
+					Yii::$app->session->setFlash('error', UserManagementModule::t('front', 'Unable to send message for email provided'));
 				}
 			}
 		}
@@ -341,23 +243,14 @@ class AuthController extends BaseController
 		return $this->renderIsAjax('confirmEmail', compact('model'));
 	}
 
-	/**
-	 * Receive token, find user by it and confirm email
-	 *
-	 * @param string $token
-	 *
-	 * @throws \yii\web\NotFoundHttpException
-	 * @return string|\yii\web\Response
-	 */
-	public function actionConfirmEmailReceive($token)
+	public function actionConfirmEmailReceive(string $token): Response|string
 	{
 		$user = User::findByConfirmationToken($token);
 
-		if ( !$user )
-		{
+		if (!$user) {
 			throw new NotFoundHttpException(UserManagementModule::t('front', 'Token not found. It may be expired'));
 		}
-		
+
 		$user->email_confirmed = 1;
 		$user->removeConfirmationToken();
 		$user->save(false);
@@ -365,15 +258,7 @@ class AuthController extends BaseController
 		return $this->renderIsAjax('confirmEmailSuccess', compact('user'));
 	}
 
-	/**
-	 * Universal method for triggering events like "before registration", "after registration" and so on
-	 *
-	 * @param string $eventName
-	 * @param array  $data
-	 *
-	 * @return bool
-	 */
-	protected function triggerModuleEvent($eventName, $data = [])
+	protected function triggerModuleEvent(string $eventName, array $data = []): bool
 	{
 		$event = new UserAuthEvent($data);
 

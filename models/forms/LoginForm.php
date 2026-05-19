@@ -1,4 +1,5 @@
 <?php
+
 namespace webvimark\modules\UserManagement\models\forms;
 
 use webvimark\helpers\LittleBigHelper;
@@ -9,27 +10,23 @@ use Yii;
 
 class LoginForm extends Model
 {
-	public $username;
-	public $password;
-	public $rememberMe = false;
+	public ?string $username   = null;
+	public ?string $password   = null;
+	public bool    $rememberMe = false;
 
-	private $_user = false;
+	private ?User $_user = null;
 
-	/**
-	 * @inheritdoc
-	 */
-	public function rules()
+	public function rules(): array
 	{
 		return [
 			[['username', 'password'], 'required'],
 			['rememberMe', 'boolean'],
 			['password', 'validatePassword'],
-
 			['username', 'validateIP'],
 		];
 	}
 
-	public function attributeLabels()
+	public function attributeLabels(): array
 	{
 		return [
 			'username'   => UserManagementModule::t('front', 'Username'),
@@ -38,75 +35,51 @@ class LoginForm extends Model
 		];
 	}
 
-	/**
-	 * Validates the password.
-	 * This method serves as the inline validation for password.
-	 */
-	public function validatePassword()
+	public function validatePassword(): void
 	{
-		if ( !Yii::$app->getModule('user-management')->checkAttempts() )
-		{
+		if (!Yii::$app->getModule('user-management')->checkAttempts()) {
 			$this->addError('password', UserManagementModule::t('front', 'Too many attempts'));
-
-			return false;
+			return;
 		}
 
-		if ( !$this->hasErrors() )
-		{
+		if (!$this->hasErrors()) {
 			$user = $this->getUser();
-			if ( !$user || !$user->validatePassword($this->password) )
-			{
+			if (!$user || !$user->validatePassword($this->password)) {
 				$this->addError('password', UserManagementModule::t('front', 'Incorrect username or password.'));
 			}
 		}
 	}
 
-	/**
-	 * Check if user is binded to IP and compare it with his actual IP
-	 */
-	public function validateIP()
+	public function validateIP(): void
 	{
 		$user = $this->getUser();
 
-		if ( $user AND $user->bind_to_ip )
-		{
-			$ips = explode(',', $user->bind_to_ip);
+		if ($user && $user->bind_to_ip) {
+			$ips = array_map('trim', explode(',', $user->bind_to_ip));
 
-			$ips = array_map('trim', $ips);
-
-			if ( !in_array(LittleBigHelper::getRealIp(), $ips) )
-			{
-				$this->addError('password', UserManagementModule::t('front', "You could not login from this IP"));
+			if (!in_array(LittleBigHelper::getRealIp(), $ips, true)) {
+				$this->addError('password', UserManagementModule::t('front', 'You could not login from this IP'));
 			}
 		}
 	}
 
-	/**
-	 * Logs in a user using the provided username and password.
-	 * @return boolean whether the user is logged in successfully
-	 */
-	public function login()
+	public function login(): bool
 	{
-		if ( $this->validate() )
-		{
+		if ($this->validate()) {
 			return Yii::$app->user->login($this->getUser(), $this->rememberMe ? Yii::$app->user->cookieLifetime : 0);
 		}
-		else
-		{
-			return false;
-		}
+
+		return false;
 	}
 
-	/**
-	 * Finds user by [[username]]
-	 * @return User|null
-	 */
-	public function getUser()
+	public function getUser(): ?User
 	{
-		if ( $this->_user === false )
-		{
-			$u = new \Yii::$app->user->identityClass;
-			$this->_user = ($u instanceof User ? $u->findByUsername($this->username) : User::findByUsername($this->username));
+		if ($this->_user === null) {
+			$identityClass    = Yii::$app->user->identityClass;
+			$identityInstance = new $identityClass();
+			$this->_user      = ($identityInstance instanceof User)
+				? $identityInstance->findByUsername($this->username)
+				: User::findByUsername($this->username);
 		}
 
 		return $this->_user;

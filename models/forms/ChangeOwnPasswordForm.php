@@ -1,4 +1,5 @@
 <?php
+
 namespace webvimark\modules\UserManagement\models\forms;
 
 use webvimark\modules\UserManagement\models\User;
@@ -8,43 +9,27 @@ use Yii;
 
 class ChangeOwnPasswordForm extends Model
 {
-	/**
-	 * @var User
-	 */
-	public $user;
+	public ?User   $user             = null;
+	public ?string $current_password = null;
+	public ?string $password         = null;
+	public ?string $repeat_password  = null;
 
-	/**
-	 * @var string
-	 */
-	public $current_password;
-	/**
-	 * @var string
-	 */
-	public $password;
-	/**
-	 * @var string
-	 */
-	public $repeat_password;
-
-	/**
-	 * @inheritdoc
-	 */
-	public function rules()
+	public function rules(): array
 	{
 		return [
 			[['password', 'repeat_password'], 'required'],
-			[['password', 'repeat_password', 'current_password'], 'string', 'max'=>255],
+			[['password', 'repeat_password', 'current_password'], 'string', 'max' => 255],
 			[['password', 'repeat_password', 'current_password'], 'trim'],
 			['password', 'match', 'pattern' => Yii::$app->getModule('user-management')->passwordRegexp],
 
-			['repeat_password', 'compare', 'compareAttribute'=>'password'],
+			['repeat_password', 'compare', 'compareAttribute' => 'password'],
 
-			['current_password', 'required', 'except'=>'restoreViaEmail'],
-			['current_password', 'validateCurrentPassword', 'except'=>'restoreViaEmail'],
+			['current_password', 'required', 'except' => 'restoreViaEmail'],
+			['current_password', 'validateCurrentPassword', 'except' => 'restoreViaEmail'],
 		];
 	}
 
-	public function attributeLabels()
+	public function attributeLabels(): array
 	{
 		return [
 			'current_password' => UserManagementModule::t('back', 'Current password'),
@@ -53,39 +38,27 @@ class ChangeOwnPasswordForm extends Model
 		];
 	}
 
-
-	/**
-	 * Validates current password
-	 */
-	public function validateCurrentPassword()
+	public function validateCurrentPassword(): void
 	{
-		if ( !Yii::$app->getModule('user-management')->checkAttempts() )
-		{
+		if (!Yii::$app->getModule('user-management')->checkAttempts()) {
 			$this->addError('current_password', UserManagementModule::t('back', 'Too many attempts'));
-
-			return false;
+			return;
 		}
 
-		if ( !Yii::$app->security->validatePassword($this->current_password, $this->user->password_hash) )
-		{
-			$this->addError('current_password', UserManagementModule::t('back', "Wrong password"));
+		if (!Yii::$app->security->validatePassword($this->current_password, $this->user->password_hash)) {
+			$this->addError('current_password', UserManagementModule::t('back', 'Wrong password'));
 		}
 	}
 
-	/**
-	 * @param bool $performValidation
-	 *
-	 * @return bool
-	 */
-	public function changePassword($performValidation = true)
+	public function changePassword(bool $performValidation = true): bool
 	{
-		if ( $performValidation AND !$this->validate() )
-		{
+		if ($performValidation && !$this->validate()) {
 			return false;
 		}
 
 		$this->user->password = $this->password;
 		$this->user->removeConfirmationToken();
+
 		return $this->user->save();
 	}
 }

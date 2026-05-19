@@ -5,58 +5,33 @@ namespace webvimark\modules\UserManagement\components;
 use yii\web\User;
 use Yii;
 
-/**
- * Class UserConfig
- * @package webvimark\modules\UserManagement\components
- */
 class UserConfig extends User
 {
-	/**
-	 * @inheritdoc
-	 */
 	public $identityClass = 'webvimark\modules\UserManagement\models\User';
 
-	/**
-	 * @inheritdoc
-	 */
 	public $enableAutoLogin = true;
-	
-	/**
- 	 * @inheritdoc
-	 */
+
 	public $cookieLifetime = 2592000;
-  
-	/**
-	 * @inheritdoc
-	 */
+
 	public $loginUrl = ['/user-management/auth/login'];
 
 	/**
-	 * Allows to call Yii::$app->user->isSuperadmin
-	 *
-	 * @return bool
+	 * Allows Yii::$app->user->isSuperadmin
 	 */
-	public function getIsSuperadmin()
+	public function getIsSuperadmin(): bool
 	{
-		return @Yii::$app->user->identity->superadmin == 1;
+		return Yii::$app->user->identity?->superadmin == 1;
 	}
 
-	/**
-	 * @return string
-	 */
-	public function getUsername()
+	public function getUsername(): ?string
 	{
-		return @Yii::$app->user->identity->username;
+		return Yii::$app->user->identity?->username;
 	}
 
-	/**
-	 * @inheritdoc
-	 */
-	protected function afterLogin($identity, $cookieBased, $duration)
+	protected function afterLogin($identity, $cookieBased, $duration): void
 	{
 		AuthHelper::updatePermissions($identity);
 
 		parent::afterLogin($identity, $cookieBased, $duration);
 	}
-
 }

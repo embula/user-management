@@ -1,4 +1,5 @@
 <?php
+
 namespace webvimark\modules\UserManagement\models\forms;
 
 use webvimark\modules\UserManagement\models\User;
@@ -8,28 +9,15 @@ use Yii;
 
 class PasswordRecoveryForm extends Model
 {
-	/**
-	 * @var User
-	 */
-	protected $user;
+	protected ?User $user = null;
 
-	/**
-	 * @var string
-	 */
-	public $email;
+	public ?string $email   = null;
+	public ?string $captcha = null;
 
-	/**
-	 * @var string
-	 */
-	public $captcha;
-
-	/**
-	 * @inheritdoc
-	 */
-	public function rules()
+	public function rules(): array
 	{
 		return [
-			['captcha', 'captcha', 'captchaAction'=>'/user-management/auth/captcha'],
+			['captcha', 'captcha', 'captchaAction' => '/user-management/auth/captcha'],
 
 			[['email', 'captcha'], 'required'],
 			['email', 'trim'],
@@ -39,16 +27,11 @@ class PasswordRecoveryForm extends Model
 		];
 	}
 
-	/**
-	 * @return bool
-	 */
-	public function validateEmailConfirmedAndUserActive()
+	public function validateEmailConfirmedAndUserActive(): void
 	{
-		if ( !Yii::$app->getModule('user-management')->checkAttempts() )
-		{
+		if (!Yii::$app->getModule('user-management')->checkAttempts()) {
 			$this->addError('email', UserManagementModule::t('front', 'Too many attempts'));
-
-			return false;
+			return;
 		}
 
 		$user = User::findOne([
@@ -57,44 +40,35 @@ class PasswordRecoveryForm extends Model
 			'status'          => User::STATUS_ACTIVE,
 		]);
 
-		if ( $user )
-		{
+		if ($user) {
 			$this->user = $user;
-		}
-		else
-		{
+		} else {
 			$this->addError('email', UserManagementModule::t('front', 'E-mail is invalid'));
 		}
 	}
 
-	/**
-	 * @return array
-	 */
-	public function attributeLabels()
+	public function attributeLabels(): array
 	{
 		return [
-			'email' => 'E-mail',
+			'email'   => 'E-mail',
 			'captcha' => UserManagementModule::t('front', 'Captcha'),
 		];
 	}
 
-	/**
-	 * @param bool $performValidation
-	 *
-	 * @return bool
-	 */
-	public function sendEmail($performValidation = true)
+	public function sendEmail(bool $performValidation = true): bool
 	{
-		if ( $performValidation AND !$this->validate() )
-		{
+		if ($performValidation && !$this->validate()) {
 			return false;
 		}
 
 		$this->user->generateConfirmationToken();
 		$this->user->save(false);
 
-		return Yii::$app->mailer->compose(Yii::$app->getModule('user-management')->mailerOptions['passwordRecoveryFormViewFile'], ['user' => $this->user])
-			->setFrom(Yii::$app->getModule('user-management')->mailerOptions['from'])
+		$module = Yii::$app->getModule('user-management');
+
+		return Yii::$app->mailer
+			->compose($module->mailerOptions['passwordRecoveryFormViewFile'], ['user' => $this->user])
+			->setFrom($module->mailerOptions['from'])
 			->setTo($this->email)
 			->setSubject(UserManagementModule::t('front', 'Password reset for') . ' ' . Yii::$app->name)
 			->send();

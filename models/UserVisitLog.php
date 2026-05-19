@@ -2,21 +2,19 @@
 
 namespace webvimark\modules\UserManagement\models;
 
-use Ikimea\Browser\Browser;
 use webvimark\helpers\LittleBigHelper;
 use webvimark\modules\UserManagement\UserManagementModule;
 use Yii;
+use yii\db\ActiveQuery;
 
 /**
- * This is the model class for table "user_visit_log".
- *
  * @property integer $id
- * @property string $token
- * @property string $ip
- * @property string $language
- * @property string $browser
- * @property string $os
- * @property string $user_agent
+ * @property string  $token
+ * @property string  $ip
+ * @property string  $language
+ * @property string  $browser
+ * @property string  $os
+ * @property string  $user_agent
  * @property integer $user_id
  * @property integer $visit_time
  *
@@ -24,22 +22,24 @@ use Yii;
  */
 class UserVisitLog extends \webvimark\components\BaseActiveRecord
 {
-	CONST SESSION_TOKEN = '__visitorToken';
+	const SESSION_TOKEN = '__visitorToken';
 
 	/**
-	 * Save new record in DB and write unique token in session
-	 *
-	 * @param int $userId
+	 * Records a new visit and stores a unique token in the session.
+	 * Uses cbschuld/browser.php (replaces abandoned ikimea/browser).
 	 */
-	public static function newVisitor($userId)
+	public static function newVisitor(int $userId): void
 	{
-		$browser = new Browser();
+		// cbschuld/browser.php exposes \Browser in the global namespace
+		$browser = new \Browser();
 
 		$model             = new self();
 		$model->user_id    = $userId;
-		$model->token      = uniqid();
+		$model->token      = uniqid('', true);
 		$model->ip         = LittleBigHelper::getRealIp();
-		$model->language   = isset( $_SERVER['HTTP_ACCEPT_LANGUAGE'] ) ? substr($_SERVER['HTTP_ACCEPT_LANGUAGE'], 0, 2) : '';
+		$model->language   = isset($_SERVER['HTTP_ACCEPT_LANGUAGE'])
+			? substr($_SERVER['HTTP_ACCEPT_LANGUAGE'], 0, 2)
+			: '';
 		$model->browser    = $browser->getBrowser();
 		$model->os         = $browser->getPlatform();
 		$model->user_agent = $browser->getUserAgent();
@@ -50,41 +50,33 @@ class UserVisitLog extends \webvimark\components\BaseActiveRecord
 	}
 
 	/**
-	 * Checks if token stored in session is equal to token from this user last visit
-	 * Logout if not
+	 * Logs out and reloads if session token no longer matches the latest DB record.
 	 */
-	public static function checkToken()
+	public static function checkToken(): void
 	{
-		if (Yii::$app->user->isGuest)
+		if (Yii::$app->user->isGuest) {
 			return;
+		}
 
 		$model = static::find()
-			->andWhere(['user_id'=>Yii::$app->user->id])
+			->andWhere(['user_id' => Yii::$app->user->id])
 			->orderBy('id DESC')
 			->asArray()
 			->one();
 
-		if ( !$model OR ($model['token'] !== Yii::$app->session->get(self::SESSION_TOKEN)) )
-		{
+		if (!$model || ($model['token'] !== Yii::$app->session->get(self::SESSION_TOKEN))) {
 			Yii::$app->user->logout();
-
-			echo "<script> location.reload();</script>";
+			echo '<script>location.reload();</script>';
 			Yii::$app->end();
 		}
 	}
 
-	/**
-	* @inheritdoc
-	*/
-	public static function tableName()
+	public static function tableName(): string
 	{
 		return Yii::$app->getModule('user-management')->user_visit_log_table;
 	}
 
-	/**
-	* @inheritdoc
-	*/
-	public function rules()
+	public function rules(): array
 	{
 		return [
 			[['token', 'ip', 'language', 'visit_time'], 'required'],
@@ -93,14 +85,11 @@ class UserVisitLog extends \webvimark\components\BaseActiveRecord
 			[['ip'], 'string', 'max' => 15],
 			[['os'], 'string', 'max' => 20],
 			[['browser'], 'string', 'max' => 30],
-			[['language'], 'string', 'max' => 2]
+			[['language'], 'string', 'max' => 2],
 		];
 	}
 
-	/**
-	* @inheritdoc
-	*/
-	public function attributeLabels()
+	public function attributeLabels(): array
 	{
 		return [
 			'id'         => UserManagementModule::t('back', 'ID'),
@@ -115,11 +104,8 @@ class UserVisitLog extends \webvimark\components\BaseActiveRecord
 		];
 	}
 
-	/**
-	* @return \yii\db\ActiveQuery
-	*/
-	public function getUser()
+	public function getUser(): ActiveQuery
 	{
-		return $this->hasOne(User::className(), ['id' => 'user_id']);
+		return $this->hasOne(User::class, ['id' => 'user_id']);
 	}
 }

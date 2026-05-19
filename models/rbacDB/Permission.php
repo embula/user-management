@@ -1,4 +1,5 @@
 <?php
+
 namespace webvimark\modules\UserManagement\models\rbacDB;
 
 use Exception;
@@ -10,60 +11,47 @@ class Permission extends AbstractItem
 {
 	const ITEM_TYPE = self::TYPE_PERMISSION;
 
-	/**
-	 * @param int $userId
-	 *
-	 * @return array|\yii\rbac\Permission[]
-	 */
-	public static function getUserPermissions($userId)
+	public static function getUserPermissions(int $userId): array
 	{
 		$dbManager = Yii::$app->authManager instanceof DbManager ? Yii::$app->authManager : new DbManager();
-		
+
 		return $dbManager->getPermissionsByUser($userId);
 	}
 
 	/**
-	 * Assign route to permission and create them if they don't exists
-	 * Helper mainly for migrations
+	 * Assign routes to a permission, creating the permission if it does not exist.
+	 * Mainly used in migrations.
 	 *
-	 * @param string       $permissionName
-	 * @param array|string $routes
-	 * @param null|string  $permissionDescription
-	 * @param null|string  $groupCode
-	 *
-	 * @throws \InvalidArgumentException
-	 * @return true|static|string
+	 * @param string|array $routes
+	 * @return true|static
 	 */
-	public static function assignRoutes($permissionName, $routes, $permissionDescription = null, $groupCode = null)
-	{
+	public static function assignRoutes(
+		string  $permissionName,
+		string|array $routes,
+		?string $permissionDescription = null,
+		?string $groupCode = null
+	): true|static {
 		$permission = static::findOne(['name' => $permissionName]);
-		$routes = (array)$routes;
+		$routes     = (array)$routes;
 
-		if ( !$permission )
-		{
+		if (!$permission) {
 			$permission = static::create($permissionName, $permissionDescription, $groupCode);
 
-			if ( $permission->hasErrors() )
-			{
+			if ($permission->hasErrors()) {
 				return $permission;
 			}
 		}
 
-		foreach ($routes as $route)
-		{
+		foreach ($routes as $route) {
 			$route = '/' . ltrim($route, '/');
-			try
-			{
+			try {
 				Yii::$app->db->createCommand()
 					->insert(Yii::$app->getModule('user-management')->auth_item_child_table, [
 						'parent' => $permission->name,
 						'child'  => $route,
 					])->execute();
-			}
-			catch (Exception $e)
-			{
-				// Don't throw Exception because this permission may already have this route,
-				// so just go to the next route
+			} catch (Exception) {
+				// Route may already be assigned — continue
 			}
 		}
 

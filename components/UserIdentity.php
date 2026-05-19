@@ -1,4 +1,5 @@
 <?php
+
 namespace webvimark\modules\UserManagement\components;
 
 use webvimark\modules\UserManagement\models\User;
@@ -8,63 +9,41 @@ use yii\web\IdentityInterface;
 use Yii;
 
 /**
- * Parent class for User model
- *
  * @property integer $id
- * @property string $username
- * @property string $auth_key
- * @property string $password_hash
- * @property string $confirmation_token
+ * @property string  $username
+ * @property string  $auth_key
+ * @property string  $password_hash
+ * @property string  $confirmation_token
  * @property integer $status
  * @property integer $superadmin
  * @property integer $created_at
  * @property integer $updated_at
  */
+#[\AllowDynamicProperties]
 abstract class UserIdentity extends ActiveRecord implements IdentityInterface
 {
-	/**
-	 * @inheritdoc
-	 */
-	public static function findIdentity($id)
+	public static function findIdentity($id): ?static
 	{
 		return static::findOne($id);
 	}
 
-	/**
-	 * @inheritdoc
-	 */
-	public static function findIdentityByAccessToken($token, $type = null)
+	public static function findIdentityByAccessToken($token, $type = null): ?static
 	{
 		return static::findOne(['auth_key' => $token, 'status' => User::STATUS_ACTIVE]);
 	}
 
-	/**
-	 * Finds user by username
-	 *
-	 * @param  string      $username
-	 * @return static|null
-	 */
-	public static function findByUsername($username)
+	public static function findByUsername(string $username): ?static
 	{
 		return static::findOne(['username' => $username, 'status' => User::STATUS_ACTIVE]);
 	}
 
-	/**
-	 * Finds user by confirmation token
-	 *
-	 * @param  string      $token confirmation token
-	 * @return static|null|User
-	 */
-	public static function findByConfirmationToken($token)
+	public static function findByConfirmationToken(string $token): static|null
 	{
 		$expire    = Yii::$app->getModule('user-management')->confirmationTokenExpire;
-
 		$parts     = explode('_', $token);
 		$timestamp = (int)end($parts);
 
-		if ( $timestamp + $expire < time() )
-		{
-			// token expired
+		if ($timestamp + $expire < time()) {
 			return null;
 		}
 
@@ -74,22 +53,13 @@ abstract class UserIdentity extends ActiveRecord implements IdentityInterface
 		]);
 	}
 
-	/**
-	 * Finds user by confirmation token
-	 *
-	 * @param  string      $token confirmation token
-	 * @return static|null|User
-	 */
-	public static function findInactiveByConfirmationToken($token)
+	public static function findInactiveByConfirmationToken(string $token): static|null
 	{
 		$expire    = Yii::$app->getModule('user-management')->confirmationTokenExpire;
-
 		$parts     = explode('_', $token);
 		$timestamp = (int)end($parts);
 
-		if ( $timestamp + $expire < time() )
-		{
-			// token expired
+		if ($timestamp + $expire < time()) {
 			return null;
 		}
 
@@ -99,87 +69,50 @@ abstract class UserIdentity extends ActiveRecord implements IdentityInterface
 		]);
 	}
 
-	/**
-	 * @inheritdoc
-	 */
-	public function getId()
+	public function getId(): mixed
 	{
 		return $this->getPrimaryKey();
 	}
 
-	/**
-	 * @inheritdoc
-	 */
-	public function getAuthKey()
+	public function getAuthKey(): ?string
 	{
 		return $this->auth_key;
 	}
 
-	/**
-	 * @inheritdoc
-	 */
-	public function validateAuthKey($authKey)
+	public function validateAuthKey($authKey): bool
 	{
 		return $this->getAuthKey() === $authKey;
 	}
 
-	/**
-	 * Validates password
-	 *
-	 * @param  string  $password password to validate
-	 * @return boolean if password provided is valid for current user
-	 */
-	public function validatePassword($password)
+	public function validatePassword(string $password): bool
 	{
 		return Yii::$app->security->validatePassword($password, $this->password_hash);
 	}
 
-	/**
-	 * Generates password hash from password and sets it to the model
-	 *
-	 * @param string $password
-	 */
-	public function setPassword($password)
+	public function setPassword(string $password): void
 	{
-		if ( php_sapi_name() == 'cli' )
-		{
-			$security = new Security();
-			$this->password_hash = $security->generatePasswordHash($password);
-		}
-		else
-		{
+		if (php_sapi_name() === 'cli') {
+			$this->password_hash = (new Security())->generatePasswordHash($password);
+		} else {
 			$this->password_hash = Yii::$app->security->generatePasswordHash($password);
 		}
 	}
 
-	/**
-	 * Generates "remember me" authentication key
-	 */
-	public function generateAuthKey()
+	public function generateAuthKey(): void
 	{
-		if ( php_sapi_name() == 'cli' )
-		{
-			$security = new Security();
-			$this->auth_key = $security->generateRandomString();
-		}
-		else
-		{
+		if (php_sapi_name() === 'cli') {
+			$this->auth_key = (new Security())->generateRandomString();
+		} else {
 			$this->auth_key = Yii::$app->security->generateRandomString();
 		}
 	}
 
-	/**
-	 * Generates new confirmation token
-	 */
-	public function generateConfirmationToken()
+	public function generateConfirmationToken(): void
 	{
 		$this->confirmation_token = Yii::$app->security->generateRandomString() . '_' . time();
 	}
 
-	/**
-	 * Removes confirmation token
-	 */
-	public function removeConfirmationToken()
+	public function removeConfirmationToken(): void
 	{
 		$this->confirmation_token = null;
 	}

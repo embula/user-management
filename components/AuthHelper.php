@@ -7,97 +7,71 @@ use webvimark\modules\UserManagement\models\rbacDB\Permission;
 use webvimark\modules\UserManagement\models\rbacDB\Role;
 use webvimark\modules\UserManagement\models\rbacDB\Route;
 use Yii;
-use yii\base\InvalidParamException;
+use yii\base\InvalidArgumentException;
 use yii\helpers\Inflector;
 use yii\helpers\Url;
 use yii\rbac\DbManager;
 
 class AuthHelper
 {
-	const SESSION_PREFIX_LAST_UPDATE         = '__auth_last_update';
-	const SESSION_PREFIX_ROLES               = '__userRoles';
-	const SESSION_PREFIX_PERMISSIONS         = '__userPermissions';
-	const SESSION_PREFIX_ROUTES              = '__userRoutes';
-
+	const SESSION_PREFIX_LAST_UPDATE  = '__auth_last_update';
+	const SESSION_PREFIX_ROLES        = '__userRoles';
+	const SESSION_PREFIX_PERMISSIONS  = '__userPermissions';
+	const SESSION_PREFIX_ROUTES       = '__userRoutes';
 
 	/**
-	 * Example how to handle layouts from config file
-	 *
-	 * 'on beforeAction'=>['webvimark\modules\UserManagement\components\AuthHelper', 'layoutHandler'],
-	 *
-	 * @param \yii\base\ActionEvent $event
+	 * Example layout handler — wire up via 'on beforeAction' in config.
 	 */
-	public static function layoutHandler($event)
+	public static function layoutHandler(\yii\base\ActionEvent $event): void
 	{
-		if ( $event->action->uniqueId == 'user-management/auth/login' )
-		{
+		if ($event->action->uniqueId === 'user-management/auth/login') {
 			$event->action->controller->layout = 'loginLayout.php';
-		}
-		elseif ( $event->action->controller->id == 'auth' )
-		{
-			if ( in_array($event->action->id, ['change-own-password', 'confirm-email']) )
-			{
+		} elseif ($event->action->controller->id === 'auth') {
+			if (in_array($event->action->id, ['change-own-password', 'confirm-email'])) {
 				$event->action->controller->layout = '//back.php';
-			}
-			else
-			{
+			} else {
 				$event->action->controller->layout = '//main.php';
 			}
-		}
-		else
-		{
+		} else {
 			$event->action->controller->layout = '//back.php';
 		}
 	}
 
 	/**
-	 * Gather all user permissions and roles and store them in the session
-	 *
-	 * @param UserIdentity $identity
+	 * Gather all user permissions and roles and store them in the session.
 	 */
-	public static function updatePermissions($identity)
+	public static function updatePermissions(UserIdentity $identity): void
 	{
 		$session = Yii::$app->session;
 
-		// Clear data first in case we want to refresh permissions
 		$session->remove(self::SESSION_PREFIX_ROLES);
 		$session->remove(self::SESSION_PREFIX_PERMISSIONS);
 		$session->remove(self::SESSION_PREFIX_ROUTES);
 
-		// Set permissions last mod time
 		$session->set(self::SESSION_PREFIX_LAST_UPDATE, filemtime(self::getPermissionsLastModFile()));
 
-		// Save roles, permissions and routes in session
 		$session->set(self::SESSION_PREFIX_ROLES, array_keys(Role::getUserRoles($identity->id)));
 		$session->set(self::SESSION_PREFIX_PERMISSIONS, array_keys(Permission::getUserPermissions($identity->id)));
 		$session->set(self::SESSION_PREFIX_ROUTES, Route::getUserRoutes($identity->id));
 	}
 
 	/**
-	 * Checks if permissions has been changed somehow, and refresh data in session if necessary
+	 * Refresh session permissions if the backing file has been touched since last load.
 	 */
-	public static function ensurePermissionsUpToDate()
+	public static function ensurePermissionsUpToDate(): void
 	{
-		if ( !Yii::$app->user->isGuest )
-		{
-			if ( Yii::$app->session->get(self::SESSION_PREFIX_LAST_UPDATE) != filemtime(self::getPermissionsLastModFile()) )
-			{
+		if (!Yii::$app->user->isGuest) {
+			if (Yii::$app->session->get(self::SESSION_PREFIX_LAST_UPDATE) != filemtime(self::getPermissionsLastModFile())) {
 				static::updatePermissions(Yii::$app->user->identity);
 			}
 		}
 	}
 
-	/**
-	 * Get path to file that store time of the last auth changes
-	 *
-	 * @return string
-	 */
-	public static function getPermissionsLastModFile()
+	public static function getPermissionsLastModFile(): string
 	{
 		$file = Yii::$app->runtimePath . '/__permissions_last_mod.txt';
 
-		if ( !is_file($file) )
-		{
+		if (!is_file($file)) {
 			file_put_contents($file, '');
 			chmod($file, 0777);
 		}
@@ -105,76 +79,52 @@ class AuthHelper
 		return $file;
 	}
 
-	/**
-	 * Change modification time of permissions last mod file
-	 */
-	public static function invalidatePermissions()
+	public static function invalidatePermissions(): void
 	{
 		touch(static::getPermissionsLastModFile());
 	}
-	
+
 	/**
-	 * Return route without baseUrl and start it with slash
+	 * Return route without baseUrl, always starting with a slash.
 	 *
 	 * @param string|array $route
-	 *
-	 * @return string
 	 */
-	public static function unifyRoute($route)
+	public static function unifyRoute(string|array $route): string
 	{
-		// If its like Html::a('Create', ['create'])
-		if ( is_array($route) AND strpos($route[0], '/') === false )
-		{
+		// Relative array route like ['create'] — convert to absolute URL string first
+		if (is_array($route) && !str_contains($route[0], '/')) {
 			$route = Url::toRoute($route);
 		}
 
-		if ( Yii::$app->getUrlManager()->showScriptName === true )
-		{
+		if (Yii::$app->getUrlManager()->showScriptName === true) {
 			$baseUrl = Yii::$app->getRequest()->scriptUrl;
-		}
-		else
-		{
+		} else {
 			$baseUrl = Yii::$app->getRequest()->baseUrl;
 		}
 
-		// Check if $route has been passed as array or as string with params (or without)
-		if ( !is_array($route) )
-		{
+		if (!is_array($route)) {
 			$route = explode('?', $route);
 		}
 
 		$routeAsString = $route[0];
 
-		// If it's not clean url like localhost/folder/index.php/bla-bla then remove
-		// baseUrl and leave only relative path 'bla-bla'
-		if ( $baseUrl )
-		{
-			if ( strpos($routeAsString, $baseUrl) === 0 )
-			{
-				$routeAsString = substr_replace($routeAsString, '', 0, strlen($baseUrl));
-			}
+		if ($baseUrl && str_starts_with($routeAsString, $baseUrl)) {
+			$routeAsString = substr($routeAsString, strlen($baseUrl));
 		}
 
 		$languagePrefix = '/' . Yii::$app->language . '/';
 
-		// Remove language prefix
-		if ( strpos($routeAsString, $languagePrefix) === 0 )
-		{
-			$routeAsString = substr_replace($routeAsString, '', 0, strlen($languagePrefix));
+		if (str_starts_with($routeAsString, $languagePrefix)) {
+			$routeAsString = substr($routeAsString, strlen($languagePrefix));
 		}
 
 		return '/' . ltrim($routeAsString, '/');
 	}
 
 	/**
-	 * Get child routes, permissions or roles
-	 *
-	 * @param string $itemName
-	 * @param integer $childType
-	 *
-	 * @return array
+	 * Get child routes, permissions, or roles filtered by type.
 	 */
-	public static function getChildrenByType($itemName, $childType)
+	public static function getChildrenByType(string $itemName, int $childType): array
 	{
 		$dbManager = Yii::$app->authManager instanceof DbManager ? Yii::$app->authManager : new DbManager();
 
@@ -182,10 +132,8 @@ class AuthHelper
 
 		$result = [];
 
-		foreach ($children as $id => $item)
-		{
-			if ( $item->type == $childType )
-			{
+		foreach ($children as $id => $item) {
+			if ($item->type == $childType) {
 				$result[$id] = $item;
 			}
 		}
@@ -194,60 +142,38 @@ class AuthHelper
 	}
 
 	/**
-	 * Select items that has "/" in permissions
-	 *
-	 * @param array $allPermissions
-	 *
-	 * @return object
+	 * Split a flat permissions array into routes vs. permissions.
 	 */
-	public static function separateRoutesAndPermissions($allPermissions)
+	public static function separateRoutesAndPermissions(array $allPermissions): object
 	{
-		$arrayOfPermissions = $allPermissions;
-
-		$routes = [];
+		$routes      = [];
 		$permissions = [];
 
-		foreach ($arrayOfPermissions as $id => $item)
-		{
-			if ( $item->type == AbstractItem::TYPE_ROUTE )
-			{
+		foreach ($allPermissions as $id => $item) {
+			if ($item->type == AbstractItem::TYPE_ROUTE) {
 				$routes[$id] = $item;
-
-			}
-			else
-			{
+			} else {
 				$permissions[$id] = $item;
-
 			}
 		}
 
 		return (object)compact('routes', 'permissions');
 	}
 
-
-	/**
-	 * @return array
-	 */
-	public static function getAllModules()
+	public static function getAllModules(): array
 	{
 		$result = [];
 
-		$currentEnvModules = \Yii::$app->getModules();
-
-		foreach ($currentEnvModules as $moduleId => $uselessStuff)
-		{
+		foreach (\Yii::$app->getModules() as $moduleId => $uselessStuff) {
 			$result[$moduleId] = \Yii::$app->getModule($moduleId);
 		}
 
 		return $result;
 	}
 
-
 	// ================= Credits to mdm/admin module =================
-	/**
-	 * @return array
-	 */
-	public static function getRoutes()
+
+	public static function getRoutes(): array
 	{
 		$result = [];
 		self::getRouteRecursive(Yii::$app, $result);
@@ -255,26 +181,16 @@ class AuthHelper
 		return array_reverse(array_combine($result, $result));
 	}
 
-	/**
-	 * @param \yii\base\Module $module
-	 * @param array            $result
-	 */
-	private static function getRouteRecursive($module, &$result)
+	private static function getRouteRecursive(\yii\base\Module $module, array &$result): void
 	{
-		foreach ($module->getModules() as $id => $child)
-		{
-			if ( ($child = $module->getModule($id)) !== null )
-			{
+		foreach ($module->getModules() as $id => $child) {
+			if (($child = $module->getModule($id)) !== null) {
 				self::getRouteRecursive($child, $result);
 			}
 		}
-		/* @var $controller \yii\base\Controller */
-		foreach ($module->controllerMap as $id => $value)
-		{
-			$controller = Yii::createObject($value, [
-				$id,
-				$module
-			]);
+
+		foreach ($module->controllerMap as $id => $value) {
+			$controller = Yii::createObject($value, [$id, $module]);
 			self::getActionRoutes($controller, $result);
 			$result[] = '/' . $controller->uniqueId . '/*';
 		}
@@ -282,80 +198,56 @@ class AuthHelper
 		$namespace = trim($module->controllerNamespace, '\\') . '\\';
 		self::getControllerRoutes($module, $namespace, '', $result);
 
-		if ( $module->uniqueId )
-		{
-			$result[] = '/'. $module->uniqueId . '/*';
-		}
-		else
-		{
-			$result[] = $module->uniqueId . '/*';
-		}
+		$result[] = ($module->uniqueId ? '/' . $module->uniqueId : '') . '/*';
 	}
 
-	/**
-	 * @param \yii\base\Controller $controller
-	 * @param Array                $result all controller action.
-	 */
-	private static function getActionRoutes($controller, &$result)
+	private static function getActionRoutes(\yii\base\Controller $controller, array &$result): void
 	{
 		$prefix = '/' . $controller->uniqueId . '/';
-		foreach ($controller->actions() as $id => $value)
-		{
+
+		foreach ($controller->actions() as $id => $value) {
 			$result[] = $prefix . $id;
 		}
+
 		$class = new \ReflectionClass($controller);
-		foreach ($class->getMethods() as $method)
-		{
+
+		foreach ($class->getMethods() as $method) {
 			$name = $method->getName();
-			if ( $method->isPublic() && !$method->isStatic() && strpos($name, 'action') === 0 && $name !== 'actions' )
-			{
+			if ($method->isPublic() && !$method->isStatic() && str_starts_with($name, 'action') && $name !== 'actions') {
 				$result[] = $prefix . Inflector::camel2id(substr($name, 6));
 			}
 		}
 	}
 
-	/**
-	 * @param \yii\base\Module $module
-	 * @param $namespace
-	 * @param $prefix
-	 * @param $result
-	 */
-	private static function getControllerRoutes($module, $namespace, $prefix, &$result)
+	private static function getControllerRoutes(\yii\base\Module $module, string $namespace, string $prefix, array &$result): void
 	{
-		try
-		{
+		try {
 			$path = Yii::getAlias('@' . str_replace('\\', '/', $namespace));
-		}
-		catch (InvalidParamException $e)
-		{
+		} catch (InvalidArgumentException $e) {
 			$path = $module->getBasePath() . '/controllers';
 		}
 
-		if ( is_dir($path) )
-		{
-			foreach (scandir($path) as $file)
-			{
-				if ( strpos($file, '.') === 0 )
-				{
-					continue;
-				}
+		if (!is_dir($path)) {
+			return;
+		}
 
-				if ( is_dir($path . '/' . $file) )
-				{
-					self::getControllerRoutes($module, $namespace . $file . '\\', $prefix . $file . '/', $result);
-				}
-				elseif ( strcmp(substr($file, -14), 'Controller.php') === 0 )
-				{
-					$id = Inflector::camel2id(substr(basename($file), 0, -14), '-', true);
-					$className = $namespace . Inflector::id2camel($id) . 'Controller';
-					if ( strpos($className, '-') === false && class_exists($className) && is_subclass_of($className, 'yii\base\Controller') )
-					{
-						$controller = new $className($prefix . $id, $module);
-						self::getActionRoutes($controller, $result);
-						$result[] = '/' . $controller->uniqueId . '/*';
-					}
+		foreach (scandir($path) as $file) {
+			if (str_starts_with($file, '.')) {
+				continue;
+			}
+
+			if (is_dir($path . '/' . $file)) {
+				self::getControllerRoutes($module, $namespace . $file . '\\', $prefix . $file . '/', $result);
+			} elseif (str_ends_with($file, 'Controller.php')) {
+				$id        = Inflector::camel2id(substr(basename($file), 0, -14), '-', true);
+				$className = $namespace . Inflector::id2camel($id) . 'Controller';
+
+				if (!str_contains($className, '-') && class_exists($className) && is_subclass_of($className, 'yii\base\Controller')) {
+					$controller = new $className($prefix . $id, $module);
+					self::getActionRoutes($controller, $result);
+					$result[] = '/' . $controller->uniqueId . '/*';
 				}
 			}
 		}
 	}
-} 
+}

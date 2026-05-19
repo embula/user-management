@@ -7,37 +7,26 @@ use Yii;
 use yii\behaviors\TimestampBehavior;
 
 /**
- * This is the model class for table "auth_item_group".
- *
- * @property string $code
- * @property string $name
+ * @property string  $code
+ * @property string  $name
  * @property integer $created_at
  * @property integer $updated_at
  */
 class AuthItemGroup extends \yii\db\ActiveRecord
 {
-	/**
-	* @inheritdoc
-	*/
-	public static function tableName()
+	public static function tableName(): string
 	{
 		return Yii::$app->getModule('user-management')->auth_item_group_table;
 	}
 
-	/**
-	* @inheritdoc
-	*/
-	public function behaviors()
+	public function behaviors(): array
 	{
 		return [
-			TimestampBehavior::className(),
+			TimestampBehavior::class,
 		];
 	}
 
-	/**
-	* @inheritdoc
-	*/
-	public function rules()
+	public function rules(): array
 	{
 		return [
 			[['code', 'name'], 'required'],
@@ -48,16 +37,13 @@ class AuthItemGroup extends \yii\db\ActiveRecord
 		];
 	}
 
-	/**
-	* @inheritdoc
-	*/
-	public function attributeLabels()
+	public function attributeLabels(): array
 	{
 		return [
-			'name'        => UserManagementModule::t('back', 'Name'),
-			'code'        => UserManagementModule::t('back', 'Code'),
-			'created_at'  => UserManagementModule::t('back', 'Created'),
-			'updated_at'  => UserManagementModule::t('back', 'Updated'),
+			'name'       => UserManagementModule::t('back', 'Name'),
+			'code'       => UserManagementModule::t('back', 'Code'),
+			'created_at' => UserManagementModule::t('back', 'Created'),
+			'updated_at' => UserManagementModule::t('back', 'Updated'),
 		];
 	}
 }

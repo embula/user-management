@@ -8,12 +8,10 @@ use yii\base\Model;
 use yii\data\ActiveDataProvider;
 use webvimark\modules\UserManagement\models\UserVisitLog;
 
-/**
- * UserVisitLogSearch represents the model behind the search form about `webvimark\modules\UserManagement\models\UserVisitLog`.
- */
+#[\AllowDynamicProperties]
 class UserVisitLogSearch extends UserVisitLog
 {
-	public function rules()
+	public function rules(): array
 	{
 		return [
 			[['id'], 'integer'],
@@ -21,31 +19,28 @@ class UserVisitLogSearch extends UserVisitLog
 		];
 	}
 
-	public function scenarios()
+	public function scenarios(): array
 	{
-		// bypass scenarios() implementation in the parent class
 		return Model::scenarios();
 	}
 
-	public function search($params)
+	public function search(array $params): ActiveDataProvider
 	{
 		$query = UserVisitLog::find();
-
 		$query->joinWith(['user']);
 
-		// Don't let non-superadmin view superadmin activity
-		if ( !Yii::$app->user->isSuperadmin )
-		{
-			$query->andWhere([User::tableName() . '.superadmin'=>0]);
+		// Do not expose superadmin activity to non-superadmins
+		if (!Yii::$app->user->isSuperadmin) {
+			$query->andWhere([User::tableName() . '.superadmin' => 0]);
 		}
 
 		$dataProvider = new ActiveDataProvider([
-			'query' => $query,
+			'query'      => $query,
 			'pagination' => [
 				'pageSize' => Yii::$app->request->cookies->getValue('_grid_page_size', 20),
 			],
-			'sort'=>[
-				'defaultOrder'=>['id'=> SORT_DESC],
+			'sort' => [
+				'defaultOrder' => ['id' => SORT_DESC],
 			],
 		]);
 
@@ -53,24 +48,25 @@ class UserVisitLogSearch extends UserVisitLog
 			return $dataProvider;
 		}
 
-		if ( $this->visit_time )
-		{
+		if ($this->visit_time) {
 			$tmp = explode(' - ', $this->visit_time);
-			if ( isset($tmp[0], $tmp[1]) )
-			{
-				$query->andFilterWhere(['between', static::tableName() . '.visit_time', strtotime($tmp[0]), strtotime($tmp[1])]);
+			if (isset($tmp[0], $tmp[1])) {
+				$query->andFilterWhere([
+					'between',
+					static::tableName() . '.visit_time',
+					strtotime($tmp[0]),
+					strtotime($tmp[1]),
+				]);
 			}
 		}
 
-		$query->andFilterWhere([
-			$this->tableName() . '.id' => $this->id,
-		]);
+		$query->andFilterWhere([static::tableName() . '.id' => $this->id]);
 
-        	$query->andFilterWhere(['like', User::tableName() . '.username', $this->user_id])
-			->andFilterWhere(['like', static::tableName() . '.ip', $this->ip])
-			->andFilterWhere(['like', static::tableName() . '.os', $this->os])
-			->andFilterWhere(['like', static::tableName() . '.browser', $this->browser])
-			->andFilterWhere(['like', static::tableName() . '.language', $this->language]);
+		$query->andFilterWhere(['like', User::tableName() . '.username', $this->user_id])
+			  ->andFilterWhere(['like', static::tableName() . '.ip', $this->ip])
+			  ->andFilterWhere(['like', static::tableName() . '.os', $this->os])
+			  ->andFilterWhere(['like', static::tableName() . '.browser', $this->browser])
+			  ->andFilterWhere(['like', static::tableName() . '.language', $this->language]);
 
 		return $dataProvider;
 	}

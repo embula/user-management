@@ -1,4 +1,5 @@
 <?php
+
 namespace webvimark\modules\UserManagement\models\rbacDB;
 
 use Exception;
@@ -11,50 +12,32 @@ class Role extends AbstractItem
 {
 	const ITEM_TYPE = self::TYPE_ROLE;
 
-	/**
-	 * @param int     $userId
-	 *
-	 * @return array|\yii\rbac\Role[]
-	 */
-	public static function getUserRoles($userId)
+	public static function getUserRoles(int $userId): array
 	{
 		$dbManager = Yii::$app->authManager instanceof DbManager ? Yii::$app->authManager : new DbManager();
 
 		return $dbManager->getRolesByUser($userId);
 	}
 
-	/**
-	 * Get permissions assigned to this role or its children
-	 *
-	 * @param string $roleName
-	 * @param bool   $asArray
-	 *
-	 * @return array|Permission[]
-	 */
-	public static function getPermissionsByRole($roleName, $asArray = true)
+	public static function getPermissionsByRole(string $roleName, bool $asArray = true): array
 	{
-		$dbManager = Yii::$app->authManager instanceof DbManager ? Yii::$app->authManager : new DbManager();
+		$dbManager        = Yii::$app->authManager instanceof DbManager ? Yii::$app->authManager : new DbManager();
+		$rbacPermissions  = $dbManager->getPermissionsByRole($roleName);
+		$permissionNames  = ArrayHelper::map($rbacPermissions, 'name', 'description');
 
-		$rbacPermissions = $dbManager->getPermissionsByRole($roleName);
-
-		$permissionNames = ArrayHelper::map($rbacPermissions, 'name', 'description');
-
-		return $asArray ? $permissionNames : Permission::find()->andWhere(['name'=>array_keys($permissionNames)])->all();
+		return $asArray
+			? $permissionNames
+			: Permission::find()->andWhere(['name' => array_keys($permissionNames)])->all();
 	}
 
 	/**
-	 * Return only roles, that are assigned to the current user.
-	 * Return all if superadmin
-	 * Useful for forms where user can give roles to another users, but we restrict him only with roles he possess
-	 *
-	 * @param bool $showAll
-	 * @param bool $asArray
-	 *
-	 * @return static[]
+	 * Returns roles available to assign: all roles if superadmin, or only roles the current user holds.
 	 */
-	public static function getAvailableRoles($showAll = false, $asArray = false)
+	public static function getAvailableRoles(bool $showAll = false, bool $asArray = false): array
 	{
-		$condition = (Yii::$app->user->isSuperAdmin OR $showAll) ? [] : ['name'=>Yii::$app->session->get(AuthHelper::SESSION_PREFIX_ROLES)];
+		$condition = ($showAll || Yii::$app->user->isSuperadmin)
+			? []
+			: ['name' => Yii::$app->session->get(AuthHelper::SESSION_PREFIX_ROLES)];
 
 		$result = static::find()->andWhere($condition)->all();
 
@@ -62,71 +45,57 @@ class Role extends AbstractItem
 	}
 
 	/**
-	 * Assign route to role via permission and create permission or route if it don't exists
-	 * Helper mainly for migrations
+	 * Assign routes to a role via a named permission, creating either if needed.
+	 * Mainly used in migrations.
 	 *
-	 * @param string      $roleName
-	 * @param string      $permissionName
-	 * @param array       $routes
-	 * @param null|string $permissionDescription
-	 * @param null|string $groupCode
-	 *
-	 * @throws \InvalidArgumentException
-	 * @return true|static|string
+	 * @return true|static
 	 */
-	public static function assignRoutesViaPermission($roleName, $permissionName, $routes, $permissionDescription = null, $groupCode = null)
-	{
+	public static function assignRoutesViaPermission(
+		string  $roleName,
+		string  $permissionName,
+		array   $routes,
+		?string $permissionDescription = null,
+		?string $groupCode = null
+	): true|static {
 		$role = static::findOne(['name' => $roleName]);
 
-		if ( !$role )
+		if (!$role) {
 			throw new \InvalidArgumentException("Role with name = {$roleName} not found");
-
+		}
 
 		$permission = Permission::findOne(['name' => $permissionName]);
 
-		if ( !$permission )
-		{
+		if (!$permission) {
 			$permission = Permission::create($permissionName, $permissionDescription, $groupCode);
 
-			if ( $permission->hasErrors() )
+			if ($permission->hasErrors()) {
 				return $permission;
+			}
 		}
 
-		try
-		{
+		try {
 			Yii::$app->db->createCommand()
 				->insert(Yii::$app->getModule('user-management')->auth_item_child_table, [
 					'parent' => $role->name,
 					'child'  => $permission->name,
 				])->execute();
-
-		}
-		catch (Exception $e)
-		{
-			// Don't throw Exception because we may have this permission for this role,
-			// but need to add new routes to it
+		} catch (Exception) {
+			// Permission already assigned to role — continue
 		}
 
-		$routes = (array)$routes;
-
-		foreach ($routes as $route)
-		{
-			$route = '/'. ltrim($route, '/');
+		foreach ((array)$routes as $route) {
+			$route = '/' . ltrim($route, '/');
 
 			Route::create($route);
 
-			try
-			{
+			try {
 				Yii::$app->db->createCommand()
 					->insert(Yii::$app->getModule('user-management')->auth_item_child_table, [
 						'parent' => $permission->name,
 						'child'  => $route,
 					])->execute();
-			}
-			catch (Exception $e)
-			{
-				// Don't throw Exception because this permission may already have this route,
-				// so just go to the next route
+			} catch (Exception) {
+				// Route already assigned — continue
 			}
 		}
 

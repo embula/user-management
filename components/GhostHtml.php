@@ -1,7 +1,4 @@
 <?php
-/**
- * @var $this yii\web\View
- */
 
 namespace webvimark\modules\UserManagement\components;
 
@@ -9,23 +6,13 @@ use webvimark\modules\UserManagement\models\User;
 use yii\helpers\Html;
 
 /**
- * Class GhostHtml
- *
- * Show elements only to those, who can access to them
- *
- * @package webvimark\modules\UserManagement\components
+ * Renders links only when the current user has route access.
  */
 class GhostHtml extends Html
 {
-	/**
-	 * Hide link if user hasn't access to it
-	 *
-	 * @inheritdoc
-	 */
-	public static function a($text, $url = null, $options = [])
+	public static function a($text, $url = null, $options = []): string
 	{
-		if ( in_array($url, [null, '', '#']) )
-		{
+		if (in_array($url, [null, '', '#'], true)) {
 			return parent::a($text, $url, $options);
 		}
 
